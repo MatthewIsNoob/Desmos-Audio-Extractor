@@ -1,0 +1,387 @@
+<!doctype html>
+<html>
+<head>
+<title>Audio Data Extractor</title>
+<style type="text/css">
+    html, body {
+        width: 100%; height: 100%;
+        padding: 0; margin: 0;
+        overflow: hidden;
+       
+        font-family: Arial, sans-serif;
+    }
+    canvas, #overlay {
+        position: absolute;
+        left: 0; top: 0;
+    }
+select {font-size:16px;}
+.custombutton { /* this class turns an ordinary link or span into a nice attractive push-button */
+display: inline-block;
+width:78px;
+height:28px;
+line-height:28px;
+font-size:15px;
+font-family:Arial, sans-serif;
+text-align:center;
+color:black;
+background:-webkit-linear-gradient(white,#eeeeee,#eeeeee,#e0e0e0);
+background:linear-gradient(white,#eeeeee,#eeeeee,#e0e0e0);
+text-decoration:none;
+border:1px solid gray;
+border-radius: 5px;
+-webkit-user-select: none;
+-moz-user-select: -moz-none;
+-webkit-user-select: none;
+-ms-user-select: none;
+user-select: none;
+cursor: pointer;
+-webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+.custombutton:active {
+background:-webkit-linear-gradient(#909090,#808080,#808080,#707070);
+background:linear-gradient(#909090,#808080,#808080,#707070);
+}
+h1 {
+background-color: powderblue; 
+border: 2px solid black;
+padding: 8px;
+margin: 8px;
+}
+table, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+  padding: 5px;
+}
+td:nth-child(1){
+font-size: 250%;
+text-align: center;
+background-color: #bbe9ed;
+}
+
+td:nth-child(2){
+font-size: 10%;
+text-align: left;
+background-color: #e0e0e0;
+}
+td{
+opacity: 0.9;
+}
+th {
+  border: 3px solid black;
+  border-collapse: collapse;
+  padding: 5px;
+  background-color: #40c000;
+  color: white;
+}
+div.table {
+  width: 100%;
+  height: 0px;
+  overflow-y: auto;
+  border: none;
+}
+</style>
+</head>
+<body>
+
+<section id="plot"></section>
+<section id="overlay">
+    <h1> -Desmos Audio Data Extractor- </h1>
+
+<a class="custombutton" style="width:100px;" onclick="startR()" ontouchstart="">Record</a>
+<a class="custombutton" style="width:100px;" onclick="stopR()" ontouchstart="">Stop</a>
+<a class="custombutton" style="width:50px;" onclick="clearTable()" ontouchstart="">Clear</a>
+<a class="custombutton" style="width:50px;" onclick="toggle()" ontouchstart="">Toggle</a>
+<b style="font-size:150%;">|</b>
+<b style="background-color:#f5e990; border:2px solid gray;
+border-radius:5px; padding:3px;">Filter:</b> 
+<a class="custombutton" style="width:40px;" onclick="toggleF0()" ontouchstart="">None</a>
+<a class="custombutton" style="width:40px;" onclick="toggleF1()" ontouchstart="">Even</a>
+<a class="custombutton" style="width:50px;" onclick="toggleF2()" ontouchstart="">Linear</a>
+<a class="custombutton" style="width:35px;" onclick="toggleF3()" ontouchstart="">Log</a>
+<a class="custombutton" style="width:60px;" onclick="toggleF4()" ontouchstart="">Custom</a>
+<hr> 
+<input id="FFTSizeSlider" type="range" min="5" max="15" value="12" oninput="changeFSize()" onchange="changeFSize()">
+FFT Size = <span id="fSizeDisplay">4096</span>
+ <b style="font-size:150%;">|</b> 
+<input id="blockSizeSlider" type="range" min="4" max="10" value="8" oninput="changeBlockSize()" onchange="changeBlockSize()">
+Frame Size = <span id="blockSizeDisplay">256</span>
+<hr>
+<div id="divT" class="table">
+<table id="outputTable">
+        <tr>
+            <th>Index</th>
+			<th>List</th>
+		</tr>
+</table>
+</div>
+</section>
+<script>
+var fNum = 1;
+var fSize = 4096;
+var blockSize = 256;
+var T = 0;
+var T2 = 0;
+var cutOff = 50;
+var listF = [];
+var listV = [];
+var Dat = [];
+var DATA = [];
+var Fr = [];
+function toggle() {
+	if (T2 == 2){
+		T2 = 0;
+	} else {
+		T2++;
+	}
+}
+function toggleF0(){
+fNum = 0;
+}
+function toggleF1(){
+fNum = 1;
+}
+function toggleF2(){
+fNum = 2;
+}
+function toggleF3(){
+fNum = 3;
+}
+function toggleF4(){
+fNum = 4;
+}
+function changeFSize() {
+fSize = 2**Number(FFTSizeSlider.value).toFixed(3);
+fSizeDisplay.innerHTML = fSize;
+//data = new Uint8Array(fSize);
+}
+function changeBlockSize() {
+blockSize = 2**Number(blockSizeSlider.value).toFixed(3);
+blockSizeDisplay.innerHTML = blockSize;
+}
+function clearTable(){
+	while (document.getElementById("outputTable").rows.length > 1){
+		document.getElementById("outputTable").deleteRow(-1);
+	}
+	document.getElementById("divT").style.height = "0px";
+	document.getElementById("divT").style.border = "none";
+}
+function startR(){
+if (T == 0){
+T = 1;
+listF == [];
+listV == [];
+}
+}
+function stopR(){
+if (T == 1){
+document.getElementById("divT").style.height = "400px";
+document.getElementById("divT").style.border = "3px solid black";
+T = 0;
+listF = listF.flat();
+listV = listV.flat();
+for (let i = 0; i < listF.length; i++){
+if (listV[i] == 0){
+listF[i] = 0;
+} else {
+listF[i] = listF[i] + 1;
+}
+}
+var desmos = "";
+let j = 1;
+for (let i = 0; i < listF.length; i++){
+desmos += ",("+listF[i]+","+listV[i]+")" ;
+if (i % 1024 == 1023){
+desmos += "]";
+desmos = desmos.replace("," , "[");
+desmos = desmos.replace(" " , "");
+console.log(desmos);
+
+ let table = document.getElementById("outputTable");
+ let newRow = table.insertRow(table.rows.length);
+ newRow.insertCell(0).innerHTML = j;
+ newRow.insertCell(1).innerHTML = desmos;
+ j++;
+desmos = "";
+}
+}
+
+let table = document.getElementById("outputTable");
+ let newRow = table.insertRow(table.rows.length);
+ newRow.insertCell(0).innerHTML = j;
+ newRow.insertCell(1).innerHTML = desmos;
+
+}
+}
+
+function f1(x){
+return x/fSize;
+}
+function f2(x){
+return Math.log(x)/Math.log(fSize);
+}
+function f3(x){
+let a = Math.log(x+1)/Math.log(fSize);
+let b = 1-(1/((x/1000)**2 + 1));
+return a*b;
+}
+function fofx(x){
+if (fNum == 2){
+ return f1(x);
+} else if (fNum == 3){
+ return f2(x);
+}else if (fNum == 4){
+ return f3(x);
+} else {
+ return 0;
+}
+}
+(function(){
+
+var AudioContext = window.AudioContext || window.webkitAudioContext;
+navigator.mediaDevices.getUserMedia({audio: true})
+.then(spectrum).catch(console.log);
+
+function spectrum(stream) {
+   const audioCtx = new AudioContext();
+  const analyser = audioCtx.createAnalyser();
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
+  analyser.fftSize = 4096;
+  analyser.smoothingTimeConstant = 0.4;
+  const canvas = document.getElementById("plot").appendChild(document.createElement("canvas"));
+  function resizer() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener("resize", resizer);
+  resizer();
+  const ctx = canvas.getContext("2d");
+  //const data = new Uint8Array(4096);
+  //const data = new Uint8Array();
+  ctx.strokeStyle = 'rgb(0, 125, 0)';
+
+  setInterval(() => {
+	analyser.fftSize = fSize;
+	var data = new Uint8Array(fSize/2);
+    ctx.fillStyle = "#a0a0a0";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+	DATA = [];
+	Dat = [];
+analyser.getByteFrequencyData(data);
+var dataIndex = 0;
+var k = 0;
+if (fNum == 1){
+for (let i = 0; i < 4; i++){
+	for (j = 0; j < fSize/16; j++){
+		DATA[k] = data[dataIndex];
+		Fr[k] = dataIndex;
+		dataIndex += (2**i);
+		k++;
+	}
+}
+} else {
+for (let i = 0; i < data.length/2; i++){
+	if (Math.random() > fofx(i*2)){
+		DATA[k] = data[i];
+		Fr[k] = i;
+		k++;
+	}	
+}
+}
+	if ((T2 == 0) || (T2 == 1)){
+	//var logF = [];
+	//for (let i = 0; i < Fr.length; i++){
+	//	logF[i] = Math.log(Fr[i]);
+	//}
+    ctx.lineWidth = 1;
+    let x = 0;
+    for (let i = 0; i < DATA.length; i++) {
+      const y = canvas.height - (DATA[i] / 128) * canvas.height / 4;
+      const c = Math.floor((i*255)/canvas.width);
+      ctx.fillStyle = `rgb(${c},0,${255-i})`;
+      //ctx.fillRect(canvas.width*logF[i]/Math.log(fSize), y, 2, canvas.height - y);
+	  ctx.fillRect(4*canvas.width*Fr[i]/fSize, y, 2, canvas.height - y);
+    }
+	}
+	//debugger;
+//if (T == 1){
+for (let i = 0; i < DATA.length; i++){
+	Dat[i] = DATA[i];
+}
+//debugger;
+var DatF = [];
+var DatV = [];
+//function KeepMax(arr) {
+//let max = -Infinity;
+//let id = 0;
+//let i = 0;
+//while (i < arr.length) {
+//if (arr[i] > max) {
+//max = arr[i];
+//id = i;
+//debugger;
+//}
+//i++;
+//}
+//return id;
+//}
+
+function filterV(value,array){
+	let idList = [];
+	for (let i = 0; i < array.length; i++){
+		if (array[i] == value){
+			idList.push(i);
+		}
+	}
+  return idList;
+}
+
+function ArrayMax(arr){
+  let len = arr.length;
+  let max = -Infinity;
+  while (len--){
+    if (arr[len] > max){
+      max = arr[len];
+    }
+  }
+  return max;
+}
+
+var idL = 0;
+for (let i = ArrayMax(DATA); i >= 0; i--){
+	idL = filterV(i,DATA);
+	for (let j = 0; j < idL.length; j++){
+		DatF.push(Fr[idL[j]]);
+		DatV.push(DATA[idL[j]]);
+	}
+}
+
+while (DatF.length > blockSize){
+	DatF.pop();
+	DatV.pop();
+}
+
+if (T == 1){
+listF.push(DatF);
+listV.push(DatV);
+}
+	if ((T2 == 0) || (T2 == 2)){
+	//var logF = [];
+	//for (let i = 0; i < DatF.length; i++){
+	//	logF[i] = Math.log(DatF[i]);
+	//}
+	ctx.lineWidth = 1;
+    for (let i = 0; i < DatF.length; i++) {
+      const y = canvas.height - (DatV[i] / 128) * canvas.height / 4;
+      ctx.fillStyle = 'rgb(20, 120, 20)';
+      //ctx.fillRect(canvas.width*logF[i]/Math.log(fSize), y, 2, canvas.height - y);
+	  ctx.fillRect(4*canvas.width*DatF[i]/fSize, y, 2, canvas.height - y);
+	  i++;
+    }
+	}
+  }, 1000 * canvas.width / audioCtx.sampleRate);
+};
+
+})();
+</script>
+</body>
+</html>
